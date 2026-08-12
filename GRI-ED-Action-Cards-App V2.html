@@ -27,7 +27,9 @@
   .search-wrap{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:10px;display:flex;align-items:center;padding:10px 12px;gap:8px;}
   .search-wrap input{background:transparent;border:none;outline:none;color:#fff;font-size:15px;width:100%;}
   .search-wrap input::placeholder{color:#B9CCD4;}
-  .back-row{display:flex;align-items:center;gap:6px;font-size:13.5px;color:#CFE3EA;cursor:pointer;width:fit-content;margin-bottom:8px;}
+  .back-row{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 100%);border-radius:20px;padding:7px 14px 7px 12px;cursor:pointer;width:fit-content;margin-bottom:14px;box-shadow:0 2px 6px rgba(0,0,0,0.15);transition:opacity .1s;}
+  .back-row:hover{opacity:.88;}
+  .back-row:active{opacity:.75;}
 
   .content{flex:1;padding:16px 16px 90px;}
   .section-label{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-soft);margin:4px 2px 10px;}
@@ -65,6 +67,9 @@
   .box.docs{background:var(--grey-bg);} .box.docs .box-label{color:var(--ink-soft);}
   .box.ask{background:var(--slate-bg);} .box.ask .box-label{color:var(--slate);}
   .box.discharge{background:var(--mint-bg);} .box.discharge .box-label{color:var(--mint);}
+  .box.resources{background:#EFF3F6;} .box.resources .box-label{color:var(--navy);}
+  .box.resources a{color:#1F5C8B;text-decoration:underline;text-decoration-style:dotted;}
+  .resources-empty{font-size:12.5px;color:var(--ink-soft);font-style:italic;}
   .dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block;}
   .needs-content{background:var(--red-bg);color:var(--red);font-size:12.5px;font-weight:700;padding:10px 12px;border-radius:8px;margin-bottom:14px;}
 
@@ -179,6 +184,17 @@ function blocksBox(label, cls, blocks){
   return `<div class="box ${cls}"><div class="box-label"><span class="dot"></span>${label}</div>${inner}</div>`;
 }
 
+function resourcesBox(resources){
+  const items = resources || [];
+  let inner;
+  if(items.length===0){
+    inner = `<div class="resources-empty">No linked resources yet for this card.</div>`;
+  } else {
+    inner = `<ul>${items.map(r=>`<li><a href="${escapeHtml(r.url||'#')}" target="_blank" rel="noopener">${escapeHtml(r.label||r.url||'Link')}</a></li>`).join("")}</ul>`;
+  }
+  return `<div class="box resources"><div class="box-label"><span class="dot"></span>Resources</div>${inner}</div>`;
+}
+
 function render(){
   renderSearch();
   const c = document.getElementById("content");
@@ -236,6 +252,7 @@ function render(){
     html += blocksBox("Steps", "steps", card.steps);
     html += bulletBox("Documentation", "docs", card.documentation);
     html += bulletBox("Discharge Advice", "discharge", card.discharge);
+    html += resourcesBox(card.resources);
     html += `<div class="pin-box" id="compPanel" style="margin-top:18px;"></div>`;
     c.innerHTML = html;
     renderCompPanel(card);
