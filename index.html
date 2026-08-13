@@ -95,6 +95,7 @@
   .verify-row{background:var(--card-bg);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;}
   .verify-row .vtitle{font-weight:700;font-size:14.5px;color:var(--navy);}
   .verify-row .vmeta{font-size:12px;color:var(--ink-soft);margin:3px 0 10px;}
+  .expiry-banner{background:#FCEFC7;color:#6B4E00;border-bottom:1px solid #E8CE7A;font-size:12.5px;font-weight:600;line-height:1.4;padding:9px 16px;text-align:center;}
 </style>
 </head>
 <body>
@@ -103,6 +104,9 @@
     <div class="eyebrow">GRI ED</div>
     <h1 id="pageTitle">Action Cards</h1>
     <div id="searchArea"></div>
+  </div>
+  <div id="expiryBanner" class="expiry-banner" style="display:none;">
+    ⚠️ This content hasn't been reviewed since <span id="expiryFromDate"></span> — please check it's still accurate.
   </div>
   <div class="content" id="content"></div>
 </div>
@@ -115,6 +119,20 @@ window.APP_DATA = {"categories": [{"id": "CAT01", "name": "Cardiology", "color":
 const { categories: CATEGORIES, cards: CARDS } = window.APP_DATA;
 const LOG_KEY = "competency-log-v1";
 const LEAD_PIN = "2468"; // change this before real rollout — share only with leads/educators
+
+// Content review reminder: shows a banner (does not block access) once the expiry date passes.
+const CONTENT_REVIEW_DATE = new Date("2026-08-12T00:00:00");
+const CONTENT_EXPIRY_DATE = new Date("2027-08-12T00:00:00");
+(function checkExpiry(){
+  if(new Date() >= CONTENT_EXPIRY_DATE){
+    const banner = document.getElementById("expiryBanner");
+    const dateSpan = document.getElementById("expiryFromDate");
+    if(dateSpan){
+      dateSpan.textContent = CONTENT_REVIEW_DATE.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    }
+    if(banner){ banner.style.display = "block"; }
+  }
+})();
 
 const state = { view:"home", catId:null, searchTerm:"", cardId:null, log:[], loaded:false, storageOk:true, pinOk:false, myName:"" };
 
