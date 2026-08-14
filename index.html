@@ -108,6 +108,7 @@
   .field textarea:focus{border-color:var(--teal);}
   .qa-item{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
   .qa-item .qtext{font-size:13.5px;color:var(--ink);font-weight:600;}
+  .qa-item .qa-card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--teal);margin-bottom:5px;cursor:pointer;}
   .qa-item .qmeta{font-size:11.5px;color:var(--ink-soft);margin-top:3px;display:flex;align-items:center;gap:6px;}
   .qa-item .qanswer{font-size:13px;color:var(--ink);margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
   .qa-item .qanswer .qalabel{font-weight:700;color:var(--teal);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
@@ -135,8 +136,7 @@ window.APP_DATA = {"categories": [{"id": "CAT01", "name": "Cardiology", "color":
 </script>
 <script>
 const { categories: CATEGORIES, cards: CARDS } = window.APP_DATA;
-const QUESTIONS_KEY = "action-card-questions-v1";
-const LEAD_PIN = "2468"; // change this before real rollout — share only with leads/educators
+const QUESTIONS_API = "/api/questions";
 
 // Content review reminder: shows a banner (does not block access) once the expiry date passes.
 const CONTENT_REVIEW_DATE = new Date("2026-08-12T00:00:00");
@@ -152,7 +152,7 @@ const CONTENT_EXPIRY_DATE = new Date("2027-08-12T00:00:00");
   }
 })();
 
-const state = { view:"home", catId:null, searchTerm:"", cardId:null, qaCardId:null, questions:[], loaded:false, storageOk:true, pinOk:false, askFormOpenFor:null };
+const state = { view:"home", catId:null, searchTerm:"", cardId:null, qaCardId:null, questions:[], pending:[], pin:"", loaded:false, storageOk:true, pinOk:false, educatorLoaded:false, educatorOk:true, askFormOpenFor:null };
 
 function showToast(msg){
   const host = document.getElementById("toastHost");
@@ -171,8 +171,10 @@ function withTimeout(promise, ms){
 
 async function loadQuestions(){
   try{
-    const res = await withTimeout(window.storage.get(QUESTIONS_KEY, true), 5000);
-    state.questions = res && res.value ? JSON.parse(res.value) : [];
+    const res = await withTimeout(fetch(QUESTIONS_API), 5000);
+    if(!res.ok) throw new Error("bad response");
+    const data = await res.json();
+    state.questions = data.questions || [];
     state.storageOk = true;
   }catch(e){
     state.questions = [];
@@ -181,16 +183,13 @@ async function loadQuestions(){
   state.loaded = true;
   render();
 }
-async function saveQuestions(){
-  try{
-    await withTimeout(window.storage.set(QUESTIONS_KEY, JSON.stringify(state.questions), true), 5000);
-    state.storageOk = true;
-    return true;
-  }catch(e){
-    state.storageOk = false;
-    showToast("Could not save — question data isn't connecting right now.");
-    return false;
-  }
+async function loadPendingForEducator(pin){
+  const res = await withTimeout(fetch(`${QUESTIONS_API}?pin=${encodeURIComponent(pin)}`), 5000);
+  if(res.status===403){ return { ok:false, reason:"pin" }; }
+  if(!res.ok){ return { ok:false, reason:"network" }; }
+  const data = await res.json();
+  state.pending = (data.questions || []).filter(q=>q.status==="Pending");
+  return { ok:true };
 }
 function catById(id){ return CATEGORIES.find(c=>c.id===id); }
 function escapeHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -259,7 +258,38 @@ function render(){
       html += `<div class="cat-tile" style="--bar:${cat.color}" onclick="openCategory('${cat.id}')">
         <div class="cname">${cat.name}</div><div class="ccount">${cat.count} cards</div></div>`;
     });
-    html += `</div><div class="footer-link" onclick="goAnswerGate()">Lead / educator: check &amp; answer questions</div>`;
+    html += `</div>
+      <div class="section-label">Questions</div>
+      <div class="card-row" onclick="openAllQA()">
+        <div><div class="ctitle">Questions &amp; Answers</div><div class="csub">Answered questions from every card</div></div>
+        <span class="chev">›</span>
+      </div>
+      <div class="footer-link" onclick="goAnswerGate()">Lead / educator: check &amp; answer questions</div>`;
+    c.innerHTML = html;
+  }
+
+  if(state.view==="allQuestions"){
+    title.textContent = "Questions & Answers";
+    if(!state.loaded){ c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div><div class="loading">Connecting…</div>`; return; }
+    if(!state.storageOk){
+      c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div>
+        <div class="empty">Question data isn't connecting right now.
+        <div style="margin-top:10px;"><span style="text-decoration:underline;cursor:pointer;" onclick="loadQuestions()">Try again</span></div></div>`;
+      return;
+    }
+    const answered = state.questions.slice().reverse();
+    let html = `<div class="back-row" onclick="goHome()">‹ Cards</div>
+      <div class="section-label">${answered.length} answered question${answered.length===1?'':'s'}</div>`;
+    if(answered.length===0){ html += `<div class="empty">No answered questions yet.</div>`; }
+    answered.forEach(q=>{
+      html += `<div class="qa-item">
+        <div class="qa-card-label" onclick="openCard('${q.cardId}')">${escapeHtml(q.cardTitle)}</div>
+        <div class="qtext">${escapeHtml(q.question)}</div>
+        <div class="qmeta">Asked ${q.dateSubmitted}</div>
+        <div class="qanswer"><div class="qalabel">Answer</div>${escapeHtml(q.answer)}
+          <div class="qmeta" style="margin-top:4px;">Answered ${q.dateAnswered}</div></div>
+      </div>`;
+    });
     c.innerHTML = html;
   }
 
@@ -343,14 +373,14 @@ function render(){
 
   if(state.view==="answerQuestions"){
     title.textContent = "Answer Questions";
-    if(!state.loaded){ c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div><div class="loading">Connecting…</div>`; return; }
-    if(!state.storageOk){
+    if(!state.educatorLoaded){ c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div><div class="loading">Connecting…</div>`; return; }
+    if(!state.educatorOk){
       c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div>
         <div class="empty">Question data isn't connecting right now.
-        <div style="margin-top:10px;"><span style="text-decoration:underline;cursor:pointer;" onclick="loadQuestions()">Try again</span></div></div>`;
+        <div style="margin-top:10px;"><span style="text-decoration:underline;cursor:pointer;" onclick="loadEducatorView()">Try again</span></div></div>`;
       return;
     }
-    const pending = state.questions.filter(q=>q.status==="Pending");
+    const pending = state.pending;
     let html = `<div class="back-row" onclick="goHome()">‹ Cards</div>
       <div class="section-label">${pending.length} awaiting an answer</div>`;
     if(pending.length===0){ html += `<div class="empty">Nothing pending right now.</div>`; }
@@ -417,26 +447,51 @@ async function submitQuestion(cardId){
   if(!name){ showToast("Enter your name first."); return; }
   if(!question){ showToast("Enter your question first."); return; }
   const card = CARDS.find(x=>x.id===cardId);
-  const entry = {
-    qId: "Q" + Date.now() + "-" + Math.floor(Math.random()*1000),
-    staffName: name, cardId: card.id, cardTitle: card.title, question, status: "Pending",
-    dateSubmitted: new Date().toISOString().slice(0,10), answeredBy: "", answer: "", dateAnswered: "",
-  };
-  state.questions.push(entry);
-  await saveQuestions();
-  showToast("Question submitted.");
-  state.askFormOpenFor = null;
-  renderAskPanel(card);
+  try{
+    const res = await withTimeout(fetch(QUESTIONS_API, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ staffName: name, cardId: card.id, cardTitle: card.title, question }),
+    }), 5000);
+    if(!res.ok) throw new Error("bad response");
+    showToast("Question submitted.");
+    state.askFormOpenFor = null;
+    renderAskPanel(card);
+  }catch(e){
+    showToast("Could not submit — question data isn't connecting right now.");
+  }
 }
 
 function goAnswerGate(){
-  if(state.pinOk){ state.view="answerQuestions"; } else { state.view="verifyGate"; }
-  render();
+  if(state.pinOk){ state.view="answerQuestions"; loadEducatorView(); }
+  else { state.view="verifyGate"; render(); }
 }
-function checkPin(){
+async function checkPin(){
   const val = document.getElementById("pinInput").value.trim();
-  if(val === LEAD_PIN){ state.pinOk = true; state.view="answerQuestions"; render(); }
-  else{ showToast("Incorrect PIN."); }
+  if(!val){ showToast("Enter the PIN."); return; }
+  state.pin = val;
+  state.pinOk = true;
+  state.view = "answerQuestions";
+  await loadEducatorView();
+}
+async function loadEducatorView(){
+  state.educatorLoaded = false;
+  if(state.view==="answerQuestions") render();
+  try{
+    const result = await loadPendingForEducator(state.pin);
+    if(!result.ok && result.reason==="pin"){
+      state.pinOk = false; state.pin = "";
+      state.educatorLoaded = true;
+      state.view = "verifyGate";
+      render();
+      showToast("Incorrect PIN.");
+      return;
+    }
+    state.educatorOk = result.ok;
+  }catch(e){
+    state.educatorOk = false;
+  }
+  state.educatorLoaded = true;
+  render();
 }
 
 async function answerQuestion(qId){
@@ -446,15 +501,24 @@ async function answerQuestion(qId){
   const answer = answerInput ? answerInput.value.trim() : "";
   if(!answerer){ showToast("Enter your name to answer."); return; }
   if(!answer){ showToast("Enter an answer first."); return; }
-  const entry = state.questions.find(q=>q.qId===qId);
-  if(!entry) return;
-  entry.status = "Answered"; entry.answeredBy = answerer; entry.answer = answer; entry.dateAnswered = new Date().toISOString().slice(0,10);
-  await saveQuestions(); showToast("Answer submitted."); render();
+  try{
+    const res = await withTimeout(fetch(QUESTIONS_API, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: state.pin, qId, answeredBy: answerer, answer }),
+    }), 5000);
+    if(!res.ok) throw new Error("bad response");
+    showToast("Answer submitted.");
+    await loadEducatorView();
+    await loadQuestions();
+  }catch(e){
+    showToast("Could not submit answer — question data isn't connecting right now.");
+  }
 }
 
 function openCategory(id){ state.view="list"; state.catId=id; state.searchTerm=""; render(); }
 function openCard(id){ state.view="detail"; state.cardId=id; render(); }
 function openCardQA(cardId){ state.view="qa"; state.qaCardId=cardId; render(); }
+function openAllQA(){ state.view="allQuestions"; render(); }
 function goHome(){ state.view="home"; state.catId=null; state.searchTerm=""; render(); }
 function goBackToList(){ state.view = state.catId || state.searchTerm ? "list" : "home"; render(); }
 function onSearch(val){

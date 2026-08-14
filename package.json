@@ -1,0 +1,8 @@
+{
+  "name": "gri-ed-action-cards",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "redis": "^6.2.1"
+  }
+}
