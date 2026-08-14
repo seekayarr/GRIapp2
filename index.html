@@ -108,6 +108,7 @@
   .field textarea:focus{border-color:var(--teal);}
   .qa-item{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
   .qa-item .qtext{font-size:13.5px;color:var(--ink);font-weight:600;}
+  .qa-item .qa-card-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--teal);margin-bottom:5px;cursor:pointer;}
   .qa-item .qmeta{font-size:11.5px;color:var(--ink-soft);margin-top:3px;display:flex;align-items:center;gap:6px;}
   .qa-item .qanswer{font-size:13px;color:var(--ink);margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
   .qa-item .qanswer .qalabel{font-weight:700;color:var(--teal);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
@@ -257,7 +258,38 @@ function render(){
       html += `<div class="cat-tile" style="--bar:${cat.color}" onclick="openCategory('${cat.id}')">
         <div class="cname">${cat.name}</div><div class="ccount">${cat.count} cards</div></div>`;
     });
-    html += `</div><div class="footer-link" onclick="goAnswerGate()">Lead / educator: check &amp; answer questions</div>`;
+    html += `</div>
+      <div class="section-label">Questions</div>
+      <div class="card-row" onclick="openAllQA()">
+        <div><div class="ctitle">Questions &amp; Answers</div><div class="csub">Answered questions from every card</div></div>
+        <span class="chev">›</span>
+      </div>
+      <div class="footer-link" onclick="goAnswerGate()">Lead / educator: check &amp; answer questions</div>`;
+    c.innerHTML = html;
+  }
+
+  if(state.view==="allQuestions"){
+    title.textContent = "Questions & Answers";
+    if(!state.loaded){ c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div><div class="loading">Connecting…</div>`; return; }
+    if(!state.storageOk){
+      c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div>
+        <div class="empty">Question data isn't connecting right now.
+        <div style="margin-top:10px;"><span style="text-decoration:underline;cursor:pointer;" onclick="loadQuestions()">Try again</span></div></div>`;
+      return;
+    }
+    const answered = state.questions.slice().reverse();
+    let html = `<div class="back-row" onclick="goHome()">‹ Cards</div>
+      <div class="section-label">${answered.length} answered question${answered.length===1?'':'s'}</div>`;
+    if(answered.length===0){ html += `<div class="empty">No answered questions yet.</div>`; }
+    answered.forEach(q=>{
+      html += `<div class="qa-item">
+        <div class="qa-card-label" onclick="openCard('${q.cardId}')">${escapeHtml(q.cardTitle)}</div>
+        <div class="qtext">${escapeHtml(q.question)}</div>
+        <div class="qmeta">Asked ${q.dateSubmitted}</div>
+        <div class="qanswer"><div class="qalabel">Answer</div>${escapeHtml(q.answer)}
+          <div class="qmeta" style="margin-top:4px;">Answered ${q.dateAnswered}</div></div>
+      </div>`;
+    });
     c.innerHTML = html;
   }
 
@@ -486,6 +518,7 @@ async function answerQuestion(qId){
 function openCategory(id){ state.view="list"; state.catId=id; state.searchTerm=""; render(); }
 function openCard(id){ state.view="detail"; state.cardId=id; render(); }
 function openCardQA(cardId){ state.view="qa"; state.qaCardId=cardId; render(); }
+function openAllQA(){ state.view="allQuestions"; render(); }
 function goHome(){ state.view="home"; state.catId=null; state.searchTerm=""; render(); }
 function goBackToList(){ state.view = state.catId || state.searchTerm ? "list" : "home"; render(); }
 function onSearch(val){
