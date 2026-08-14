@@ -103,6 +103,16 @@
   .verify-row{background:var(--card-bg);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px;}
   .verify-row .vtitle{font-weight:700;font-size:14.5px;color:var(--navy);}
   .verify-row .vmeta{font-size:12px;color:var(--ink-soft);margin:3px 0 10px;}
+  .verify-row .qtext{font-size:13.5px;color:var(--ink);margin:6px 0;}
+  .field textarea{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;outline:none;font-family:inherit;resize:vertical;}
+  .field textarea:focus{border-color:var(--teal);}
+  .qa-item{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .qa-item .qtext{font-size:13.5px;color:var(--ink);font-weight:600;}
+  .qa-item .qmeta{font-size:11.5px;color:var(--ink-soft);margin-top:3px;display:flex;align-items:center;gap:6px;}
+  .qa-item .qanswer{font-size:13px;color:var(--ink);margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
+  .qa-item .qanswer .qalabel{font-weight:700;color:var(--teal);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
+  .badge.pending{background:var(--grey-bg);color:var(--ink-soft);}
+  .badge.answered{background:var(--green-bg);color:var(--green);}
   .expiry-banner{background:#FCEFC7;color:#6B4E00;border-bottom:1px solid #E8CE7A;font-size:12.5px;font-weight:600;line-height:1.4;padding:9px 16px;text-align:center;}
 </style>
 </head>
@@ -125,7 +135,7 @@ window.APP_DATA = {"categories": [{"id": "CAT01", "name": "Cardiology", "color":
 </script>
 <script>
 const { categories: CATEGORIES, cards: CARDS } = window.APP_DATA;
-const LOG_KEY = "competency-log-v1";
+const QUESTIONS_KEY = "action-card-questions-v1";
 const LEAD_PIN = "2468"; // change this before real rollout — share only with leads/educators
 
 // Content review reminder: shows a banner (does not block access) once the expiry date passes.
@@ -142,7 +152,7 @@ const CONTENT_EXPIRY_DATE = new Date("2027-08-12T00:00:00");
   }
 })();
 
-const state = { view:"home", catId:null, searchTerm:"", cardId:null, log:[], loaded:false, storageOk:true, pinOk:false, myName:"" };
+const state = { view:"home", catId:null, searchTerm:"", cardId:null, questions:[], loaded:false, storageOk:true, pinOk:false, askFormOpenFor:null };
 
 function showToast(msg){
   const host = document.getElementById("toastHost");
@@ -159,31 +169,28 @@ function withTimeout(promise, ms){
   ]);
 }
 
-async function loadLog(){
+async function loadQuestions(){
   try{
-    const res = await withTimeout(window.storage.get(LOG_KEY, true), 5000);
-    state.log = res && res.value ? JSON.parse(res.value) : [];
+    const res = await withTimeout(window.storage.get(QUESTIONS_KEY, true), 5000);
+    state.questions = res && res.value ? JSON.parse(res.value) : [];
     state.storageOk = true;
   }catch(e){
-    state.log = [];
+    state.questions = [];
     state.storageOk = false;
   }
   state.loaded = true;
   render();
 }
-async function saveLog(){
+async function saveQuestions(){
   try{
-    await withTimeout(window.storage.set(LOG_KEY, JSON.stringify(state.log), true), 5000);
+    await withTimeout(window.storage.set(QUESTIONS_KEY, JSON.stringify(state.questions), true), 5000);
     state.storageOk = true;
     return true;
   }catch(e){
     state.storageOk = false;
-    showToast("Could not save — competency data isn't connecting right now.");
+    showToast("Could not save — question data isn't connecting right now.");
     return false;
   }
-}
-function myEntry(cardId, name){
-  return state.log.find(l => l.cardId===cardId && l.staffName.toLowerCase()===name.toLowerCase());
 }
 function catById(id){ return CATEGORIES.find(c=>c.id===id); }
 function escapeHtml(s){ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
@@ -252,7 +259,7 @@ function render(){
       html += `<div class="cat-tile" style="--bar:${cat.color}" onclick="openCategory('${cat.id}')">
         <div class="cname">${cat.name}</div><div class="ccount">${cat.count} cards</div></div>`;
     });
-    html += `</div><div class="footer-link" onclick="goVerifyGate()">Lead / educator: verify competencies</div>`;
+    html += `</div><div class="footer-link" onclick="goAnswerGate()">Lead / educator: check &amp; answer questions</div>`;
     c.innerHTML = html;
   }
 
@@ -298,121 +305,143 @@ function render(){
     html += bulletBox("Documentation", "docs", card.documentation);
     html += bulletBox("Discharge Advice", "discharge", card.discharge);
     html += resourcesBox(card.resources);
-    html += `<div class="pin-box" id="compPanel" style="margin-top:18px;"></div>`;
+    html += `<div class="pin-box" id="askPanel" style="margin-top:18px;"></div>`;
     c.innerHTML = html;
-    renderCompPanel(card);
+    renderAskPanel(card);
   }
 
   if(state.view==="verifyGate"){
     title.textContent = "Lead / Educator Access";
     c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div>
       <div class="pin-box">
-        <h3>Verify competencies</h3>
+        <h3>Check &amp; answer questions</h3>
         <p>This area is restricted to leads and educators. Enter the access PIN to continue.</p>
         <div class="field"><label>Access PIN</label><input id="pinInput" type="password" inputmode="numeric" placeholder="••••"></div>
         <button class="btn btn-primary" onclick="checkPin()">Continue</button>
       </div>`;
   }
 
-  if(state.view==="verify"){
-    title.textContent = "Verify Competencies";
+  if(state.view==="answerQuestions"){
+    title.textContent = "Answer Questions";
     if(!state.loaded){ c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div><div class="loading">Connecting…</div>`; return; }
     if(!state.storageOk){
       c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div>
-        <div class="empty">Competency data isn't connecting right now.
-        <div style="margin-top:10px;"><span style="text-decoration:underline;cursor:pointer;" onclick="loadLog()">Try again</span></div></div>`;
+        <div class="empty">Question data isn't connecting right now.
+        <div style="margin-top:10px;"><span style="text-decoration:underline;cursor:pointer;" onclick="loadQuestions()">Try again</span></div></div>`;
       return;
     }
-    const pending = state.log.filter(l=>l.status==="Pending");
+    const pending = state.questions.filter(q=>q.status==="Pending");
     let html = `<div class="back-row" onclick="goHome()">‹ Cards</div>
-      <div class="section-label">${pending.length} awaiting verification</div>`;
+      <div class="section-label">${pending.length} awaiting an answer</div>`;
     if(pending.length===0){ html += `<div class="empty">Nothing pending right now.</div>`; }
     pending.slice().reverse().forEach(entry=>{
       html += `<div class="verify-row">
         <div class="vtitle">${escapeHtml(entry.cardTitle)}</div>
-        <div class="vmeta">Declared by ${escapeHtml(entry.staffName)} on ${entry.selfDeclaredDate}</div>
-        <div class="field"><label>Your name (verifying)</label><input id="verifier-${entry.logId}" type="text" placeholder="e.g. Caitlin"></div>
-        <button class="btn btn-primary" onclick="verifyEntry('${entry.logId}')">Verify competent</button>
+        <div class="vmeta">Asked by ${escapeHtml(entry.staffName)} on ${entry.dateSubmitted}</div>
+        <div class="qtext">${escapeHtml(entry.question)}</div>
+        <div class="field" style="margin-top:10px;"><label>Your name (answering)</label><input id="answerer-${entry.qId}" type="text" placeholder="e.g. Caitlin"></div>
+        <div class="field"><label>Your answer</label><textarea id="answer-${entry.qId}" rows="3" placeholder="Type your answer…"></textarea></div>
+        <button class="btn btn-primary" onclick="answerQuestion('${entry.qId}')">Submit answer</button>
       </div>`;
     });
     c.innerHTML = html;
   }
 }
 
-function renderCompPanel(card){
-  const panel = document.getElementById("compPanel");
+function renderAskPanel(card){
+  const panel = document.getElementById("askPanel");
   if(!state.loaded){
-    panel.innerHTML = `<h3>My competency</h3><div class="vmeta">Connecting…</div>`;
+    panel.innerHTML = `<h3>Questions</h3><div class="vmeta">Connecting…</div>`;
     return;
   }
   if(!state.storageOk){
-    panel.innerHTML = `<h3>My competency</h3>
-      <div class="vmeta">Competency tracking isn't connecting right now — the rest of the card still works fine. <span style="text-decoration:underline;cursor:pointer;" onclick="retryStorage('${card.id}')">Try again</span></div>`;
+    panel.innerHTML = `<h3>Questions</h3>
+      <div class="vmeta">Question submission isn't connecting right now — the rest of the card still works fine. <span style="text-decoration:underline;cursor:pointer;" onclick="retryQuestions('${card.id}')">Try again</span></div>`;
     return;
   }
-  panel.innerHTML = `
-    <h3>My competency</h3>
-    <p>Enter your name, then self-declare. A lead or educator verifies it separately — you won't see anyone else's declarations here.</p>
-    <div class="field"><label>Your name</label><input id="myName" type="text" placeholder="e.g. Caitlin" value="${escapeAttr(state.myName)}" oninput="onNameInput('${card.id}')"></div>
-    <div id="compStatusArea"></div>`;
-  onNameInput(card.id);
-}
-async function retryStorage(cardId){
-  state.loaded = false;
-  if(document.getElementById("compPanel")) renderCompPanel(CARDS.find(x=>x.id===cardId));
-  await loadLog();
-}
-function onNameInput(cardId){
-  const nameInput = document.getElementById("myName");
-  const area = document.getElementById("compStatusArea");
-  const name = nameInput ? nameInput.value.trim() : "";
-  state.myName = nameInput ? nameInput.value : "";
-  if(!name){ area.innerHTML = `<div class="vmeta">Enter your name to see or declare your status</div>`; return; }
-  const entry = myEntry(cardId, name);
-  if(!entry){
-    area.innerHTML = `<button class="btn btn-primary" onclick="declareCompetent('${cardId}')">I am competent in this</button>`;
-  } else if(entry.status==="Pending"){
-    area.innerHTML = `<div class="vmeta">⏳ Pending verification (declared ${entry.selfDeclaredDate})</div>
-      <button class="btn" disabled>Awaiting lead/educator verification</button>`;
+  let html = `<h3>Questions</h3>`;
+  if(state.askFormOpenFor === card.id){
+    html += `
+      <div class="field"><label>Your name</label><input id="askName" type="text" placeholder="e.g. Caitlin"></div>
+      <div class="field"><label>Your question</label><textarea id="askQuestion" rows="3" placeholder="What would you like to ask about this card?"></textarea></div>
+      <button class="btn btn-primary" onclick="submitQuestion('${card.id}')">Submit question</button>
+      <div class="footer-link" onclick="closeAskForm('${card.id}')">Cancel</div>`;
   } else {
-    area.innerHTML = `<div class="vmeta">✓ Verified by ${escapeHtml(entry.verifiedBy)} on ${entry.verifiedDate}</div>
-      <button class="btn" disabled>Already verified</button>`;
+    html += `<p>Have a question about this action card? A lead or educator will answer it.</p>
+      <button class="btn btn-primary" onclick="openAskForm('${card.id}')">Ask a question about this card</button>`;
   }
+  const cardQuestions = state.questions.filter(q=>q.cardId===card.id).slice().reverse();
+  if(cardQuestions.length){
+    html += `<div style="margin-top:16px;">`;
+    cardQuestions.forEach(q=>{
+      html += `<div class="qa-item">
+        <div class="qtext">${escapeHtml(q.question)}</div>
+        <div class="qmeta">Asked by ${escapeHtml(q.staffName)} on ${q.dateSubmitted}
+          ${q.status==="Answered" ? '<span class="badge answered">Answered</span>' : '<span class="badge pending">Pending</span>'}</div>`;
+      if(q.status==="Answered"){
+        html += `<div class="qanswer"><div class="qalabel">Answer</div>${escapeHtml(q.answer)}
+          <div class="qmeta" style="margin-top:4px;">— ${escapeHtml(q.answeredBy)}, ${q.dateAnswered}</div></div>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+  panel.innerHTML = html;
 }
-async function declareCompetent(cardId){
-  const nameInput = document.getElementById("myName");
+async function retryQuestions(cardId){
+  state.loaded = false;
+  if(document.getElementById("askPanel")) renderAskPanel(CARDS.find(x=>x.id===cardId));
+  await loadQuestions();
+}
+function openAskForm(cardId){
+  state.askFormOpenFor = cardId;
+  renderAskPanel(CARDS.find(x=>x.id===cardId));
+}
+function closeAskForm(cardId){
+  state.askFormOpenFor = null;
+  renderAskPanel(CARDS.find(x=>x.id===cardId));
+}
+async function submitQuestion(cardId){
+  const nameInput = document.getElementById("askName");
+  const questionInput = document.getElementById("askQuestion");
   const name = nameInput.value.trim();
+  const question = questionInput.value.trim();
   if(!name){ showToast("Enter your name first."); return; }
+  if(!question){ showToast("Enter your question first."); return; }
   const card = CARDS.find(x=>x.id===cardId);
   const entry = {
-    logId: "LOG" + Date.now() + "-" + Math.floor(Math.random()*1000),
-    staffName: name, cardId: card.id, cardTitle: card.title, status: "Pending",
-    selfDeclaredDate: new Date().toISOString().slice(0,10), verifiedBy: "", verifiedDate: "",
+    qId: "Q" + Date.now() + "-" + Math.floor(Math.random()*1000),
+    staffName: name, cardId: card.id, cardTitle: card.title, question, status: "Pending",
+    dateSubmitted: new Date().toISOString().slice(0,10), answeredBy: "", answer: "", dateAnswered: "",
   };
-  state.log.push(entry);
-  await saveLog();
-  showToast("Declared — pending verification.");
-  render();
+  state.questions.push(entry);
+  await saveQuestions();
+  showToast("Question submitted.");
+  state.askFormOpenFor = null;
+  renderAskPanel(card);
 }
 
-function goVerifyGate(){
-  if(state.pinOk){ state.view="verify"; } else { state.view="verifyGate"; }
+function goAnswerGate(){
+  if(state.pinOk){ state.view="answerQuestions"; } else { state.view="verifyGate"; }
   render();
 }
 function checkPin(){
   const val = document.getElementById("pinInput").value.trim();
-  if(val === LEAD_PIN){ state.pinOk = true; state.view="verify"; render(); }
+  if(val === LEAD_PIN){ state.pinOk = true; state.view="answerQuestions"; render(); }
   else{ showToast("Incorrect PIN."); }
 }
 
-async function verifyEntry(logId){
-  const input = document.getElementById("verifier-"+logId);
-  const verifier = input ? input.value.trim() : "";
-  if(!verifier){ showToast("Enter your name to verify."); return; }
-  const entry = state.log.find(l=>l.logId===logId);
+async function answerQuestion(qId){
+  const nameInput = document.getElementById("answerer-"+qId);
+  const answerInput = document.getElementById("answer-"+qId);
+  const answerer = nameInput ? nameInput.value.trim() : "";
+  const answer = answerInput ? answerInput.value.trim() : "";
+  if(!answerer){ showToast("Enter your name to answer."); return; }
+  if(!answer){ showToast("Enter an answer first."); return; }
+  const entry = state.questions.find(q=>q.qId===qId);
   if(!entry) return;
-  entry.status = "Verified"; entry.verifiedBy = verifier; entry.verifiedDate = new Date().toISOString().slice(0,10);
-  await saveLog(); showToast("Verified."); render();
+  entry.status = "Answered"; entry.answeredBy = answerer; entry.answer = answer; entry.dateAnswered = new Date().toISOString().slice(0,10);
+  await saveQuestions(); showToast("Answer submitted."); render();
 }
 
 function openCategory(id){ state.view="list"; state.catId=id; state.searchTerm=""; render(); }
@@ -429,7 +458,7 @@ function onSearch(val){
 
 (function init(){
   render();
-  loadLog();
+  loadQuestions();
 })();
 </script>
 </body>
