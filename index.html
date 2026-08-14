@@ -152,7 +152,7 @@ const CONTENT_EXPIRY_DATE = new Date("2027-08-12T00:00:00");
   }
 })();
 
-const state = { view:"home", catId:null, searchTerm:"", cardId:null, questions:[], loaded:false, storageOk:true, pinOk:false, askFormOpenFor:null };
+const state = { view:"home", catId:null, searchTerm:"", cardId:null, qaCardId:null, questions:[], loaded:false, storageOk:true, pinOk:false, askFormOpenFor:null };
 
 function showToast(msg){
   const host = document.getElementById("toastHost");
@@ -310,6 +310,26 @@ function render(){
     renderAskPanel(card);
   }
 
+  if(state.view==="qa"){
+    const card = CARDS.find(x=>x.id===state.qaCardId);
+    title.textContent = "Questions & Answers";
+    let html = `<div class="back-row" onclick="openCard('${card.id}')">‹ Back to card</div>
+      <div class="detail-cat">${catById(card.catId).name}</div>
+      <div class="detail-title">${escapeHtml(card.title)}</div>
+      <div class="section-label">Answered questions</div>`;
+    const answered = state.questions.filter(q=>q.cardId===card.id && q.status==="Answered").slice().reverse();
+    if(answered.length===0){ html += `<div class="empty">No answered questions yet for this card.</div>`; }
+    answered.forEach(q=>{
+      html += `<div class="qa-item">
+        <div class="qtext">${escapeHtml(q.question)}</div>
+        <div class="qmeta">Asked ${q.dateSubmitted}</div>
+        <div class="qanswer"><div class="qalabel">Answer</div>${escapeHtml(q.answer)}
+          <div class="qmeta" style="margin-top:4px;">Answered ${q.dateAnswered}</div></div>
+      </div>`;
+    });
+    c.innerHTML = html;
+  }
+
   if(state.view==="verifyGate"){
     title.textContent = "Lead / Educator Access";
     c.innerHTML = `<div class="back-row" onclick="goHome()">‹ Cards</div>
@@ -370,21 +390,9 @@ function renderAskPanel(card){
     html += `<p>Have a question about this action card? A lead or educator will answer it.</p>
       <button class="btn btn-primary" onclick="openAskForm('${card.id}')">Ask a question about this card</button>`;
   }
-  const cardQuestions = state.questions.filter(q=>q.cardId===card.id).slice().reverse();
-  if(cardQuestions.length){
-    html += `<div style="margin-top:16px;">`;
-    cardQuestions.forEach(q=>{
-      html += `<div class="qa-item">
-        <div class="qtext">${escapeHtml(q.question)}</div>
-        <div class="qmeta">Asked by ${escapeHtml(q.staffName)} on ${q.dateSubmitted}
-          ${q.status==="Answered" ? '<span class="badge answered">Answered</span>' : '<span class="badge pending">Pending</span>'}</div>`;
-      if(q.status==="Answered"){
-        html += `<div class="qanswer"><div class="qalabel">Answer</div>${escapeHtml(q.answer)}
-          <div class="qmeta" style="margin-top:4px;">— ${escapeHtml(q.answeredBy)}, ${q.dateAnswered}</div></div>`;
-      }
-      html += `</div>`;
-    });
-    html += `</div>`;
+  const answeredCount = state.questions.filter(q=>q.cardId===card.id && q.status==="Answered").length;
+  if(answeredCount){
+    html += `<div class="footer-link" style="margin-top:14px;" onclick="openCardQA('${card.id}')">View ${answeredCount} answered question${answeredCount===1?'':'s'} for this card</div>`;
   }
   panel.innerHTML = html;
 }
@@ -446,6 +454,7 @@ async function answerQuestion(qId){
 
 function openCategory(id){ state.view="list"; state.catId=id; state.searchTerm=""; render(); }
 function openCard(id){ state.view="detail"; state.cardId=id; render(); }
+function openCardQA(cardId){ state.view="qa"; state.qaCardId=cardId; render(); }
 function goHome(){ state.view="home"; state.catId=null; state.searchTerm=""; render(); }
 function goBackToList(){ state.view = state.catId || state.searchTerm ? "list" : "home"; render(); }
 function onSearch(val){
