@@ -1,0 +1,8 @@
+{
+  "name": "gri-ed-action-cards",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@upstash/redis": "^1.38.2"
+  }
+}
