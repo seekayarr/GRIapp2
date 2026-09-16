@@ -521,6 +521,38 @@ function openCardQA(cardId){ state.view="qa"; state.qaCardId=cardId; render(); }
 function openAllQA(){ state.view="allQuestions"; render(); }
 function goHome(){ state.view="home"; state.catId=null; state.searchTerm=""; render(); }
 function goBackToList(){ state.view = state.catId || state.searchTerm ? "list" : "home"; render(); }
+function goBack(){
+  if(state.view==="detail"){ goBackToList(); }
+  else if(state.view==="qa"){ openCard(state.qaCardId); }
+  else if(["list","allQuestions","verifyGate","answerQuestions"].includes(state.view)){ goHome(); }
+}
+
+(function initSwipeBack(){
+  const content = document.getElementById("content");
+  const THRESHOLD_X = 60;
+  const MAX_OFF_AXIS = 60;
+  let startX = 0, startY = 0, tracking = false;
+
+  content.addEventListener("touchstart", (e)=>{
+    if(e.touches.length !== 1) { tracking = false; return; }
+    const t = e.target;
+    if(t.closest("input, textarea, select, .box.resources a")){ tracking = false; return; }
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+
+  content.addEventListener("touchend", (e)=>{
+    if(!tracking) return;
+    tracking = false;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if(dx <= -THRESHOLD_X && Math.abs(dy) < MAX_OFF_AXIS){
+      goBack();
+    }
+  }, { passive: true });
+})();
 function onSearch(val){
   state.searchTerm = val; state.catId = null;
   state.view = val.trim()==="" ? "home" : "list";
