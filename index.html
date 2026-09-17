@@ -531,6 +531,7 @@ function goBack(){
   const content = document.getElementById("content");
   const THRESHOLD_X = 60;
   const MAX_OFF_AXIS = 60;
+  const EDGE_ZONE = 28;
   let startX = 0, startY = 0, tracking = false;
 
   content.addEventListener("touchstart", (e)=>{
@@ -539,6 +540,8 @@ function goBack(){
     if(t.closest("input, textarea, select, .box.resources a")){ tracking = false; return; }
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
+    const edgeLeft = content.getBoundingClientRect().left;
+    if(startX - edgeLeft > EDGE_ZONE){ tracking = false; return; }
     tracking = true;
   }, { passive: true });
 
