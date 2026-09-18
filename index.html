@@ -551,7 +551,7 @@ function goBack(){
     const touch = e.changedTouches[0];
     const dx = touch.clientX - startX;
     const dy = touch.clientY - startY;
-    if(dx <= -THRESHOLD_X && Math.abs(dy) < MAX_OFF_AXIS){
+    if(dx >= THRESHOLD_X && Math.abs(dy) < MAX_OFF_AXIS){
       goBack();
     }
   }, { passive: true });
